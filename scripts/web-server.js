@@ -1,6 +1,12 @@
 #!/usr/bin/env node
 
-var util = require('util'),
+// note: coffeescript required
+
+// sudo npm install -g coffee-script
+// export NODE_PATH=$NODE_PATH:/usr/local/lib/node:/usr/local/lib/node_modules
+
+var coffee = require('coffee-script'),
+    util = require('util'),
     http = require('http'),
     fs = require('fs'),
     url = require('url'),
@@ -93,6 +99,14 @@ StaticServlet.prototype.handleRequest = function(req, res) {
   var parts = path.split('/');
   if (parts[parts.length-1].charAt(0) === '.')
     return self.sendForbidden_(req, res, path);
+
+  // is a .js file is requested,
+  // check for .coffee file first
+  var jsMatch = path.match(/(.+)\.js$/);
+  if (jsMatch && jsMatch.length >= 2) {
+    return self.sendCoffeeFile_(req, res, jsMatch);
+  }
+
   fs.stat(path, function(err, stat) {
     if (err)
       return self.sendMissing_(req, res, path);
@@ -183,6 +197,41 @@ StaticServlet.prototype.sendFile_ = function(req, res, path) {
     });
   }
 };
+
+/**
+  * Tries to find and compile a .coffee file first
+  * If not found, will try to send the original .js
+  * @param {Array.String} match is a result from path.match function
+  */
+StaticServlet.prototype.sendCoffeeFile_ = function(req, res, match) {
+  var self = this;
+  var path = match[0];
+  var coffeeFile = match[1] + '.coffee';
+  fs.exists(coffeeFile, function (exists) {
+    if (exists) {
+      fs.readFile(coffeeFile, 'utf8', function(err, data) {
+        // compiles the coffee file without top-level wrapper function
+        // to enable the option to pollute global scope
+        // and let this unhealthy feature of angular work
+        var compilerOptions = {
+          'bare': true
+        }
+        var compiled = coffee.compile(data, compilerOptions);
+        res.write(compiled);
+        res.end();
+      });
+    } else {
+      // .coffee not found, try to find and return original request
+      fs.exists(path, function(exists) {
+        if (exists) {
+          self.sendFile_(req, res, path);
+        } else {
+          self.sendMissing_(req, res, path);
+        }
+      });
+    }
+  });
+}
 
 StaticServlet.prototype.sendDirectory_ = function(req, res, path) {
   var self = this;
