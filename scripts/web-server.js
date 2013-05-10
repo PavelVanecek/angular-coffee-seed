@@ -207,6 +207,7 @@ StaticServlet.prototype.sendCoffeeFile_ = function(req, res, match) {
   var self = this;
   var path = match[0];
   var coffeeFile = match[1] + '.coffee';
+  //coffeeFile = coffeeFile.replace("/js/", "/coffee/");
   fs.exists(coffeeFile, function (exists) {
     if (exists) {
       fs.readFile(coffeeFile, 'utf8', function(err, data) {
