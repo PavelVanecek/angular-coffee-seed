@@ -5,6 +5,8 @@
 // sudo npm install -g coffee-script
 // export NODE_PATH=$NODE_PATH:/usr/local/lib/node:/usr/local/lib/node_modules
 
+var SourceMaps = {}
+
 var coffee = require('coffee-script'),
     util = require('util'),
     http = require('http'),
@@ -105,6 +107,10 @@ StaticServlet.prototype.handleRequest = function(req, res) {
   var jsMatch = path.match(/(.+)\.js$/);
   if (jsMatch && jsMatch.length >= 2) {
     return self.sendCoffeeFile_(req, res, jsMatch);
+  }
+  var mapMatch = path.match(/(.+)\.map$/);
+  if (mapMatch && mapMatch.length >= 2) {
+    return self.sendMapFile_(req, res, mapMatch);
   }
 
   fs.stat(path, function(err, stat) {
@@ -215,11 +221,16 @@ StaticServlet.prototype.sendCoffeeFile_ = function(req, res, match) {
         // to enable the option to pollute global scope
         // and let this unhealthy feature of angular work
         var compilerOptions = {
-          'bare': true
+          'bare': true,
+          'filename': coffeeFile,
+          'sourceMap': true,
+          'sourceFiles': [coffeeFile.substring(1)]
         }
         var compiled = coffee.compile(data, compilerOptions);
-        res.write(compiled);
+        res.write(compiled.js);
+        res.write("/*\n//@ sourceMappingURL="+match[1].substring(1)+".map\n*/ ")
         res.end();
+        SourceMaps[match[1]+".map"] = compiled.v3SourceMap;
       });
     } else {
       // .coffee not found, try to find and return original request
@@ -233,6 +244,24 @@ StaticServlet.prototype.sendCoffeeFile_ = function(req, res, match) {
     }
   });
 }
+
+StaticServlet.prototype.sendMapFile_ = function(req, res, match) {
+    var self = this;
+    var path = match[0];
+    if (SourceMaps[match[1]+".map"]){
+        res.write(SourceMaps[match[1]+".map"]);
+        res.end();
+    } else {
+      // .map not found, try to find and return original request
+      fs.exists(path, function(exists) {
+        if (exists) {
+          self.sendFile_(req, res, path);
+        } else {
+          self.sendMissing_(req, res, path);
+        }
+      });
+    }
+};
 
 StaticServlet.prototype.sendDirectory_ = function(req, res, path) {
   var self = this;
